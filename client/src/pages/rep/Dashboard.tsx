@@ -33,7 +33,8 @@ import type { User, Product, Customer, Sale } from "@shared/schema";
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const isAdmin = user?.role === "admin";
+  // This is the representative dashboard - never show admin content
+  const isAdmin = false;
 
   const { data: users } = useQuery<User[]>({
     queryKey: ["/api/users"],
