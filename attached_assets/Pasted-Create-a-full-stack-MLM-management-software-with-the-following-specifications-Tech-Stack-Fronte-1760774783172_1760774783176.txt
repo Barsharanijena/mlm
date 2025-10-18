@@ -1,0 +1,65 @@
+Create a full-stack MLM management software with the following specifications:
+
+Tech Stack:
+- Frontend: React.js + TailwindCSS or Material-UI
+- Backend: Node.js + Express.js
+- Database: MongoDB (or PostgreSQL)
+- Analytics: Chart.js / Recharts
+- Realtime: Socket.io
+- AI Features: OpenAI API placeholders for product recommendations, sales predictions, and pricing suggestions
+- Auth: JWT-based authentication with Admin, Representative, and Customer roles
+
+Functional Requirements:
+
+1. Admin Dashboard:
+- Manage representatives, customers, products, and inventory
+- Assign product pricing and commissions
+- View hierarchical sales chain
+- Full CRUD for all modules
+- Interactive analytics: sales, commissions, top reps, inventory
+- AI-powered suggestions for pricing, sales optimization
+- Exportable reports (CSV/PDF)
+- Real-time stock and commission updates
+
+2. Representative Dashboard:
+- Add and manage customers
+- Set pricing for downstream customers within limits
+- Track sales, commissions, and chain performance
+- Interactive analytics: top customers, monthly sales
+- AI suggestions: product recommendations and leads
+
+3. Customer Management:
+- Representatives can add/edit/remove customers
+- Track purchases and assigned pricing
+
+4. Inventory Management:
+- Admin manages stock, products, and pricing
+- Real-time visibility for representatives
+
+5. Authentication & Roles:
+- Admin, Representative, and optional Customer login
+- Role-based access control
+
+6. Interactive Dashboard Features:
+- Cards, tables, filters, search, and charts
+- Dark mode toggle
+- Responsive design
+- Real-time updates using Socket.io
+
+7. Backend API:
+- REST endpoints for all modules
+- Role-based middleware
+- Database models for users, products, customers, commissions, inventory, transactions
+
+8. AI Features (placeholders):
+- Product recommendation engine per rep/customer
+- Predictive sales and commission analytics
+- Pricing adjustment suggestions
+
+9. Deliverables:
+- React frontend with dashboard pages, reusable components, and dummy data
+- Node.js backend with models, routes, controllers
+- Sample MongoDB/JSON dummy database
+- Comments in code for AI integration
+- Instructions for running in Replit including environment variables for DB and AI API keys
+- Clear folder structure: /client, /server, /models, /routes, /controllers, /components, /pages, /utils
