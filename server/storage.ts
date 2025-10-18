@@ -16,6 +16,7 @@ import {
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import bcrypt from "bcryptjs";
+import { generateUsers, generateProducts, generateInventory, generateCustomers } from "./seedDataGenerator";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -82,154 +83,48 @@ export class MemStorage implements IStorage {
   }
 
   private async seedData() {
-    const adminPassword = await bcrypt.hash("admin123", 10);
-    const repPassword = await bcrypt.hash("rep123", 10);
-
-    const admin: User = {
-      id: randomUUID(),
-      username: "admin",
-      email: "admin@mlm.com",
-      fullName: "Admin User",
-      password: adminPassword,
-      role: "admin",
-      phone: "+1234567890",
-      uplineId: null,
-      commissionRate: "0",
-      isActive: true,
-      createdAt: new Date(),
-    };
-
-    const rep1: User = {
-      id: randomUUID(),
-      username: "rep1",
-      email: "rep1@mlm.com",
-      fullName: "John Smith",
-      password: repPassword,
-      role: "representative",
-      phone: "+1234567891",
-      uplineId: null,
-      commissionRate: "10.00",
-      isActive: true,
-      createdAt: new Date(),
-    };
-
-    const rep2: User = {
-      id: randomUUID(),
-      username: "rep2",
-      email: "rep2@mlm.com",
-      fullName: "Sarah Johnson",
-      password: repPassword,
-      role: "representative",
-      phone: "+1234567892",
-      uplineId: rep1.id,
-      commissionRate: "10.00",
-      isActive: true,
-      createdAt: new Date(),
-    };
-
-    this.users.set(admin.id, admin);
-    this.users.set(rep1.id, rep1);
-    this.users.set(rep2.id, rep2);
-
-    const products = [
-      {
-        id: randomUUID(),
-        name: "Premium Widget",
-        description: "High-quality widget for all your needs",
-        category: "Electronics",
-        basePrice: "99.99",
-        sku: "WIDGET-001",
-        imageUrl: null,
-        isActive: true,
-        createdAt: new Date(),
-      },
-      {
-        id: randomUUID(),
-        name: "Deluxe Gadget",
-        description: "Advanced gadget with multiple features",
-        category: "Electronics",
-        basePrice: "149.99",
-        sku: "GADGET-001",
-        imageUrl: null,
-        isActive: true,
-        createdAt: new Date(),
-      },
-      {
-        id: randomUUID(),
-        name: "Essential Kit",
-        description: "Everything you need in one package",
-        category: "Health",
-        basePrice: "79.99",
-        sku: "KIT-001",
-        imageUrl: null,
-        isActive: true,
-        createdAt: new Date(),
-      },
-    ];
-
-    products.forEach((p) => {
-      this.products.set(p.id, p);
-      const inv: Inventory = {
-        id: randomUUID(),
-        productId: p.id,
-        quantity: Math.floor(Math.random() * 100) + 20,
-        reorderLevel: 10,
-        lastRestocked: new Date(),
-        updatedAt: new Date(),
-      };
-      this.inventory.set(inv.id, inv);
-    });
-
-    const customers = [
-      {
-        id: randomUUID(),
-        representativeId: rep1.id,
-        name: "Alice Johnson",
-        email: "alice@example.com",
-        phone: "+1234567893",
-        address: "123 Main St, City, State",
-        customPricing: null,
-        isActive: true,
-        createdAt: new Date(),
-      },
-      {
-        id: randomUUID(),
-        representativeId: rep1.id,
-        name: "Bob Williams",
-        email: "bob@example.com",
-        phone: "+1234567894",
-        address: "456 Oak Ave, City, State",
-        customPricing: null,
-        isActive: true,
-        createdAt: new Date(),
-      },
-      {
-        id: randomUUID(),
-        representativeId: rep2.id,
-        name: "Carol Davis",
-        email: "carol@example.com",
-        phone: "+1234567895",
-        address: "789 Pine St, City, State",
-        customPricing: null,
-        isActive: true,
-        createdAt: new Date(),
-      },
-    ];
-
-    customers.forEach((c) => this.customers.set(c.id, c));
-
+    console.log("🌱 Generating comprehensive seed data with 50 records each...");
+    
+    // Generate 50 users (1 admin + 49 representatives)
+    const users = await generateUsers(50);
+    users.forEach(user => this.users.set(user.id, user));
+    console.log(`✅ Generated ${users.length} users`);
+    
+    // Generate 50 products
+    const products = generateProducts(50);
+    products.forEach(product => this.products.set(product.id, product));
+    console.log(`✅ Generated ${products.length} products`);
+    
+    // Generate inventory for all products
+    const inventoryItems = generateInventory(products);
+    inventoryItems.forEach(inv => this.inventory.set(inv.id, inv));
+    console.log(`✅ Generated ${inventoryItems.length} inventory items`);
+    
+    // Generate 50 customers
+    const representatives = users.filter(u => u.role === "representative");
+    const customers = generateCustomers(representatives, 50);
+    customers.forEach(customer => this.customers.set(customer.id, customer));
+    console.log(`✅ Generated ${customers.length} customers`);
+    
+    // Generate 100 sales transactions
     const productArray = Array.from(this.products.values());
     const customerArray = Array.from(this.customers.values());
-
-    for (let i = 0; i < 10; i++) {
+    
+    for (let i = 0; i < 100; i++) {
       const customer = customerArray[Math.floor(Math.random() * customerArray.length)];
       const product = productArray[Math.floor(Math.random() * productArray.length)];
-      const quantity = Math.floor(Math.random() * 5) + 1;
+      const quantity = Math.floor(Math.random() * 10) + 1;
       const unitPrice = parseFloat(product.basePrice);
-      const totalAmount = (unitPrice * quantity).toFixed(2);
+      const subtotal = unitPrice * quantity;
+      const discountAmount = subtotal * 0.05 * Math.random();
+      const taxAmount = (subtotal - discountAmount) * 0.08;
+      const totalAmount = subtotal - discountAmount + taxAmount;
+      
       const rep = Array.from(this.users.values()).find((u) => u.id === customer.representativeId);
       const commissionRate = parseFloat(rep?.commissionRate || "10") / 100;
-      const commissionAmount = (parseFloat(totalAmount) * commissionRate).toFixed(2);
+      const commissionAmount = (subtotal * commissionRate).toFixed(2);
+      
+      const saleDate = new Date(Date.now() - Math.random() * 180 * 24 * 60 * 60 * 1000);
 
       const sale: Sale = {
         id: randomUUID(),
@@ -238,27 +133,72 @@ export class MemStorage implements IStorage {
         representativeId: customer.representativeId,
         quantity,
         unitPrice: unitPrice.toFixed(2),
-        totalAmount,
+        subtotal: subtotal.toFixed(2),
+        discountAmount: discountAmount.toFixed(2),
+        taxAmount: taxAmount.toFixed(2),
+        totalAmount: totalAmount.toFixed(2),
         commissionAmount,
-        status: "completed",
-        createdAt: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000),
+        paymentMethod: ["Credit Card", "Bank Transfer", "PayPal", "Cash"][Math.floor(Math.random() * 4)],
+        paymentStatus: Math.random() > 0.1 ? "paid" : "pending",
+        transactionId: `TXN${randomUUID().substring(0, 8).toUpperCase()}`,
+        shippingMethod: ["Standard", "Express", "Overnight", "Pickup"][Math.floor(Math.random() * 4)],
+        shippingCost: (Math.random() * 20).toFixed(2),
+        trackingNumber: Math.random() > 0.2 ? `TRK${Math.floor(Math.random() * 1000000000)}` : null,
+        estimatedDelivery: new Date(saleDate.getTime() + (3 + Math.floor(Math.random() * 7)) * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        actualDelivery: Math.random() > 0.3 ? new Date(saleDate.getTime() + (2 + Math.floor(Math.random() * 10)) * 24 * 60 * 60 * 1000) : null,
+        status: ["completed", "pending", "shipped", "delivered"][Math.floor(Math.random() * 4)],
+        notes: Math.random() > 0.7 ? "Customer requested express delivery" : null,
+        createdAt: saleDate,
+        updatedAt: new Date(),
       };
 
       this.sales.set(sale.id, sale);
 
+      // Create commission for the sale
       const commission: Commission = {
         id: randomUUID(),
         representativeId: customer.representativeId,
         saleId: sale.id,
         amount: commissionAmount,
+        percentage: (commissionRate * 100).toFixed(2),
         level: 1,
-        status: Math.random() > 0.3 ? "paid" : "pending",
-        paidAt: Math.random() > 0.3 ? new Date() : null,
-        createdAt: sale.createdAt,
+        status: Math.random() > 0.4 ? "paid" : "pending",
+        paymentMethod: Math.random() > 0.5 ? "Bank Transfer" : "Check",
+        paidAt: Math.random() > 0.4 ? new Date(saleDate.getTime() + 7 * 24 * 60 * 60 * 1000) : null,
+        notes: null,
+        createdAt: saleDate,
       };
 
       this.commissions.set(commission.id, commission);
+      
+      // Create upline commissions (multi-level)
+      if (rep && rep.uplineId) {
+        const upline = this.users.get(rep.uplineId);
+        if (upline) {
+          const uplineCommissionRate = parseFloat(upline.commissionRate || "5") / 100;
+          const uplineCommissionAmount = (subtotal * uplineCommissionRate * 0.5).toFixed(2);
+          
+          const uplineCommission: Commission = {
+            id: randomUUID(),
+            representativeId: upline.id,
+            saleId: sale.id,
+            amount: uplineCommissionAmount,
+            percentage: (uplineCommissionRate * 50).toFixed(2),
+            level: 2,
+            status: Math.random() > 0.4 ? "paid" : "pending",
+            paymentMethod: "Bank Transfer",
+            paidAt: Math.random() > 0.4 ? new Date(saleDate.getTime() + 14 * 24 * 60 * 60 * 1000) : null,
+            notes: "Upline commission",
+            createdAt: saleDate,
+          };
+          
+          this.commissions.set(uplineCommission.id, uplineCommission);
+        }
+      }
     }
+    
+    console.log(`✅ Generated 100 sales transactions with commissions`);
+    console.log("✨ Seed data generation complete!");
   }
 
   async getUser(id: string): Promise<User | undefined> {
@@ -284,10 +224,47 @@ export class MemStorage implements IStorage {
       fullName: insertUser.fullName,
       role: insertUser.role,
       phone: insertUser.phone || null,
+      alternatePhone: insertUser.alternatePhone || null,
+      dateOfBirth: insertUser.dateOfBirth || null,
+      gender: insertUser.gender || null,
+      nationality: insertUser.nationality || null,
+      languagesSpoken: insertUser.languagesSpoken || null,
+      profilePicture: insertUser.profilePicture || null,
+      address: insertUser.address || null,
+      city: insertUser.city || null,
+      state: insertUser.state || null,
+      country: insertUser.country || null,
+      postalCode: insertUser.postalCode || null,
+      billingAddress: insertUser.billingAddress || null,
+      shippingAddress: insertUser.shippingAddress || null,
+      emergencyContactName: insertUser.emergencyContactName || null,
+      emergencyContactPhone: insertUser.emergencyContactPhone || null,
+      emergencyContactRelation: insertUser.emergencyContactRelation || null,
+      bankName: insertUser.bankName || null,
+      bankAccountNumber: insertUser.bankAccountNumber || null,
+      bankRoutingNumber: insertUser.bankRoutingNumber || null,
+      taxId: insertUser.taxId || null,
+      socialSecurityNumber: insertUser.socialSecurityNumber || null,
       uplineId: insertUser.uplineId || null,
       commissionRate: insertUser.commissionRate || "10.00",
+      enrollmentDate: insertUser.enrollmentDate || new Date().toISOString().split('T')[0],
+      rankLevel: insertUser.rankLevel || "Bronze",
+      totalSales: insertUser.totalSales || "0",
+      totalCommissionsEarned: insertUser.totalCommissionsEarned || "0",
+      teamSize: insertUser.teamSize || 0,
+      personalSalesTarget: insertUser.personalSalesTarget || "10000",
+      certifications: insertUser.certifications || null,
+      trainingCompleted: insertUser.trainingCompleted || null,
+      performanceRating: insertUser.performanceRating || null,
+      preferredContactMethod: insertUser.preferredContactMethod || "email",
+      timezone: insertUser.timezone || null,
+      linkedinProfile: insertUser.linkedinProfile || null,
+      facebookProfile: insertUser.facebookProfile || null,
+      instagramHandle: insertUser.instagramHandle || null,
+      notes: insertUser.notes || null,
       isActive: insertUser.isActive ?? true,
       createdAt: new Date(),
+      lastLoginAt: null,
     };
     this.users.set(id, user);
     return user;
@@ -329,26 +306,56 @@ export class MemStorage implements IStorage {
     const id = randomUUID();
     const product: Product = {
       id,
+      brand: insertProduct.brand || null,
       name: insertProduct.name,
-      description: insertProduct.description || null,
-      category: insertProduct.category,
-      basePrice: insertProduct.basePrice,
-      sku: insertProduct.sku,
-      imageUrl: insertProduct.imageUrl || null,
+      length: insertProduct.length || null,
       isActive: insertProduct.isActive ?? true,
       createdAt: new Date(),
-    };
-    this.products.set(id, product);
-
-    const inventory: Inventory = {
-      id: randomUUID(),
-      productId: id,
-      quantity: 0,
-      reorderLevel: 10,
-      lastRestocked: null,
+      description: insertProduct.description || null,
+      category: insertProduct.category,
+      subCategory: insertProduct.subCategory || null,
+      manufacturer: insertProduct.manufacturer || null,
+      model: insertProduct.model || null,
+      sku: insertProduct.sku,
+      barcode: insertProduct.barcode || null,
+      upc: insertProduct.upc || null,
+      costPrice: insertProduct.costPrice || "0",
+      basePrice: insertProduct.basePrice,
+      retailPrice: insertProduct.retailPrice || insertProduct.basePrice,
+      wholesalePrice: insertProduct.wholesalePrice || insertProduct.basePrice,
+      taxRate: insertProduct.taxRate || "0",
+      weight: insertProduct.weight || "0",
+      weightUnit: insertProduct.weightUnit || "kg",
+      width: insertProduct.width || null,
+      height: insertProduct.height || null,
+      dimensionUnit: insertProduct.dimensionUnit || "cm",
+      color: insertProduct.color || null,
+      size: insertProduct.size || null,
+      material: insertProduct.material || null,
+      imageUrl: insertProduct.imageUrl || null,
+      imageUrl2: insertProduct.imageUrl2 || null,
+      imageUrl3: insertProduct.imageUrl3 || null,
+      videoUrl: insertProduct.videoUrl || null,
+      warrantyPeriod: insertProduct.warrantyPeriod || null,
+      warrantyDetails: insertProduct.warrantyDetails || null,
+      returnPolicy: insertProduct.returnPolicy || null,
+      shippingClass: insertProduct.shippingClass || "Standard",
+      fragile: insertProduct.fragile ?? false,
+      perishable: insertProduct.perishable ?? false,
+      hazardous: insertProduct.hazardous ?? false,
+      supplierName: insertProduct.supplierName || null,
+      supplierContact: insertProduct.supplierContact || null,
+      supplierEmail: insertProduct.supplierEmail || null,
+      leadTime: insertProduct.leadTime || null,
+      minimumOrderQuantity: insertProduct.minimumOrderQuantity || 1,
+      tags: insertProduct.tags || null,
+      metaKeywords: insertProduct.metaKeywords || null,
+      metaDescription: insertProduct.metaDescription || null,
+      seoUrl: insertProduct.seoUrl || null,
+      notes: insertProduct.notes || null,
       updatedAt: new Date(),
     };
-    this.inventory.set(inventory.id, inventory);
+    this.products.set(id, product);
 
     return product;
   }
@@ -382,11 +389,33 @@ export class MemStorage implements IStorage {
     const id = randomUUID();
     const inventory: Inventory = {
       id,
+      notes: insertInventory.notes || null,
+      supplierName: insertInventory.supplierName || null,
+      supplierContact: insertInventory.supplierContact || null,
+      updatedAt: new Date(),
       productId: insertInventory.productId,
       quantity: insertInventory.quantity ?? 0,
+      reservedQuantity: insertInventory.reservedQuantity || 0,
+      availableQuantity: (insertInventory.quantity ?? 0) - (insertInventory.reservedQuantity || 0),
       reorderLevel: insertInventory.reorderLevel ?? 10,
+      reorderQuantity: insertInventory.reorderQuantity ?? 50,
+      maximumStock: insertInventory.maximumStock || 1000,
+      warehouseLocation: insertInventory.warehouseLocation || null,
+      aisle: insertInventory.aisle || null,
+      shelf: insertInventory.shelf || null,
+      bin: insertInventory.bin || null,
+      lotNumber: insertInventory.lotNumber || null,
+      serialNumber: insertInventory.serialNumber || null,
+      expiryDate: insertInventory.expiryDate || null,
+      manufacturingDate: insertInventory.manufacturingDate || null,
       lastRestocked: insertInventory.lastRestocked || null,
-      updatedAt: new Date(),
+      lastSold: insertInventory.lastSold || null,
+      lastCountDate: insertInventory.lastCountDate || null,
+      damagedQuantity: insertInventory.damagedQuantity || 0,
+      defectiveQuantity: insertInventory.defectiveQuantity || 0,
+      returnedQuantity: insertInventory.returnedQuantity || 0,
+      condition: insertInventory.condition || "New",
+      stockValue: insertInventory.stockValue || "0",
     };
     this.inventory.set(id, inventory);
     return inventory;
@@ -429,10 +458,48 @@ export class MemStorage implements IStorage {
       name: insertCustomer.name,
       email: insertCustomer.email,
       phone: insertCustomer.phone || null,
-      address: insertCustomer.address || null,
+      alternatePhone: insertCustomer.alternatePhone || null,
+      dateOfBirth: insertCustomer.dateOfBirth || null,
+      gender: insertCustomer.gender || null,
+      company: insertCustomer.company || null,
+      jobTitle: insertCustomer.jobTitle || null,
+      website: insertCustomer.website || null,
+      industry: insertCustomer.industry || null,
+      companySize: insertCustomer.companySize || null,
+      billingStreet: insertCustomer.billingStreet || null,
+      billingCity: insertCustomer.billingCity || null,
+      billingState: insertCustomer.billingState || null,
+      billingZipCode: insertCustomer.billingZipCode || null,
+      billingCountry: insertCustomer.billingCountry || "USA",
+      shippingStreet: insertCustomer.shippingStreet || null,
+      shippingCity: insertCustomer.shippingCity || null,
+      shippingState: insertCustomer.shippingState || null,
+      shippingZipCode: insertCustomer.shippingZipCode || null,
+      shippingCountry: insertCustomer.shippingCountry || "USA",
+      taxId: insertCustomer.taxId || null,
+      creditLimit: insertCustomer.creditLimit || null,
+      paymentTerms: insertCustomer.paymentTerms || "Net 30",
+      preferredPaymentMethod: insertCustomer.preferredPaymentMethod || null,
+      preferredContactMethod: insertCustomer.preferredContactMethod || "email",
+      language: insertCustomer.language || "English",
+      timezone: insertCustomer.timezone || null,
       customPricing: insertCustomer.customPricing || null,
+      discountPercentage: insertCustomer.discountPercentage || "0.00",
+      loyaltyPoints: insertCustomer.loyaltyPoints || 0,
+      customerTier: insertCustomer.customerTier || "Standard",
+      firstPurchaseDate: insertCustomer.firstPurchaseDate || null,
+      lastPurchaseDate: insertCustomer.lastPurchaseDate || null,
+      totalPurchases: insertCustomer.totalPurchases || "0.00",
+      totalOrders: insertCustomer.totalOrders || 0,
+      averageOrderValue: insertCustomer.averageOrderValue || "0.00",
+      referredBy: insertCustomer.referredBy || null,
+      referralCode: insertCustomer.referralCode || null,
+      tags: insertCustomer.tags || null,
+      notes: insertCustomer.notes || null,
+      source: insertCustomer.source || null,
       isActive: insertCustomer.isActive ?? true,
       createdAt: new Date(),
+      updatedAt: new Date(),
     };
     this.customers.set(id, customer);
     return customer;
@@ -474,15 +541,28 @@ export class MemStorage implements IStorage {
     const id = randomUUID();
     const sale: Sale = {
       id,
-      productId: insertSale.productId,
-      customerId: insertSale.customerId,
-      representativeId: insertSale.representativeId,
-      quantity: insertSale.quantity,
-      unitPrice: insertSale.unitPrice,
-      totalAmount: insertSale.totalAmount,
-      commissionAmount: insertSale.commissionAmount,
-      status: insertSale.status || "completed",
+      notes: insertSale.notes || null,
       createdAt: new Date(),
+      status: insertSale.status || "completed",
+      updatedAt: new Date(),
+      productId: insertSale.productId,
+      quantity: insertSale.quantity,
+      representativeId: insertSale.representativeId,
+      customerId: insertSale.customerId,
+      unitPrice: insertSale.unitPrice,
+      subtotal: insertSale.subtotal || insertSale.totalAmount,
+      discountAmount: insertSale.discountAmount || "0",
+      taxAmount: insertSale.taxAmount || "0",
+      totalAmount: insertSale.totalAmount,
+      commissionAmount: insertSale.commissionAmount || "0",
+      paymentMethod: insertSale.paymentMethod || "Cash",
+      paymentStatus: insertSale.paymentStatus || "paid",
+      transactionId: insertSale.transactionId || null,
+      shippingMethod: insertSale.shippingMethod || null,
+      shippingCost: insertSale.shippingCost || "0",
+      trackingNumber: insertSale.trackingNumber || null,
+      estimatedDelivery: insertSale.estimatedDelivery || null,
+      actualDelivery: insertSale.actualDelivery || null,
     };
     this.sales.set(id, sale);
 
@@ -514,13 +594,16 @@ export class MemStorage implements IStorage {
     const id = randomUUID();
     const commission: Commission = {
       id,
+      notes: insertCommission.notes || null,
+      createdAt: new Date(),
+      status: insertCommission.status || "pending",
       representativeId: insertCommission.representativeId,
+      paymentMethod: insertCommission.paymentMethod || null,
       saleId: insertCommission.saleId,
       amount: insertCommission.amount,
+      percentage: insertCommission.percentage || "10",
       level: insertCommission.level,
-      status: insertCommission.status || "pending",
       paidAt: insertCommission.paidAt || null,
-      createdAt: new Date(),
     };
     this.commissions.set(id, commission);
     return commission;
