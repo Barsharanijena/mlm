@@ -1,163 +1,454 @@
 import { useQuery } from "@tanstack/react-query";
-import { StatsCard } from "@/components/StatsCard";
-import { UserCircle, TrendingUp, DollarSign, Package } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { AIInsightCard } from "@/components/AIInsightCard";
-import type { DashboardStats, AIRecommendation } from "@shared/schema";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { useAuth } from "@/contexts/AuthContext";
 import {
-  BarChart,
-  Bar,
   LineChart,
   Line,
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
-  ResponsiveContainer,
   Legend,
+  ResponsiveContainer,
 } from "recharts";
+import {
+  TrendingUp,
+  TrendingDown,
+  DollarSign,
+  ShoppingCart,
+  Users,
+  Package,
+  Award,
+  Target,
+  Activity,
+  Star,
+} from "lucide-react";
+import type { User, Product, Customer, Sale } from "@shared/schema";
 
-export default function RepDashboard() {
-  const { data: stats, isLoading: statsLoading } = useQuery<DashboardStats>({
-    queryKey: ["/api/rep/stats"],
+export default function Dashboard() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
+
+  const { data: users } = useQuery<User[]>({
+    queryKey: ["/api/users"],
+    enabled: isAdmin,
   });
 
-  const { data: aiRecommendations, isLoading: aiLoading } = useQuery<AIRecommendation[]>({
-    queryKey: ["/api/ai/recommendations/rep"],
+  const { data: products } = useQuery<Product[]>({
+    queryKey: ["/api/products"],
   });
 
-  const monthlyData = [
-    { month: "Jan", sales: 12000, commissions: 1200 },
-    { month: "Feb", sales: 15000, commissions: 1500 },
-    { month: "Mar", sales: 13500, commissions: 1350 },
-    { month: "Apr", sales: 18000, commissions: 1800 },
-    { month: "May", sales: 16500, commissions: 1650 },
-    { month: "Jun", sales: 20000, commissions: 2000 },
-  ];
+  const { data: customers } = useQuery<Customer[]>({
+    queryKey: isAdmin ? ["/api/customers"] : ["/api/rep/customers"],
+  });
 
-  const topCustomers = [
-    { name: "Alice Johnson", sales: 4500 },
-    { name: "Bob Smith", sales: 3800 },
-    { name: "Carol Davis", sales: 3200 },
-    { name: "David Lee", sales: 2900 },
-  ];
+  const { data: sales } = useQuery<Sale[]>({
+    queryKey: isAdmin ? ["/api/sales"] : ["/api/rep/sales"],
+  });
 
-  if (statsLoading) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <div className="animate-pulse text-muted-foreground">Loading dashboard...</div>
-      </div>
-    );
-  }
+  // Calculate KPIs
+  const totalRevenue = sales?.reduce((sum, sale) => sum + parseFloat(sale.totalAmount), 0) || 0;
+  const totalCommissions = sales?.reduce((sum, sale) => sum + parseFloat(sale.commissionAmount), 0) || 0;
+  const averageOrderValue = sales && sales.length > 0 ? totalRevenue / sales.length : 0;
+  const activeReps = users?.filter(u => u.role === "representative" && u.isActive).length || 0;
+  const activeCustomers = customers?.filter(c => c.isActive).length || 0;
+  const activeProducts = products?.filter(p => p.isActive).length || 0;
+
+  // Top Products Analysis
+  const productSales = sales?.reduce((acc, sale) => {
+    const existing = acc.find(p => p.productId === sale.productId);
+    if (existing) {
+      existing.quantity += sale.quantity;
+      existing.revenue += parseFloat(sale.totalAmount);
+      existing.orders += 1;
+    } else {
+      acc.push({
+        productId: sale.productId,
+        quantity: sale.quantity,
+        revenue: parseFloat(sale.totalAmount),
+        orders: 1,
+      });
+    }
+    return acc;
+  }, [] as Array<{ productId: string; quantity: number; revenue: number; orders: number }>);
+
+  const topProducts = productSales
+    ?.sort((a, b) => b.revenue - a.revenue)
+    .slice(0, 5)
+    .map(ps => {
+      const product = products?.find(p => p.id === ps.productId);
+      return {
+        name: product?.name || "Unknown",
+        revenue: ps.revenue,
+        quantity: ps.quantity,
+        orders: ps.orders,
+      };
+    }) || [];
+
+  // Sales Trend Data (last 7 days)
+  const salesTrend = Array.from({ length: 7 }, (_, i) => {
+    const date = new Date();
+    date.setDate(date.getDate() - (6 - i));
+    const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    
+    const daySales = sales?.filter(sale => {
+      const saleDate = new Date(sale.createdAt);
+      return saleDate.toDateString() === date.toDateString();
+    }) || [];
+
+    return {
+      date: dateStr,
+      sales: daySales.reduce((sum, sale) => sum + parseFloat(sale.totalAmount), 0),
+      orders: daySales.length,
+      commissions: daySales.reduce((sum, sale) => sum + parseFloat(sale.commissionAmount), 0),
+    };
+  });
+
+  // Top Representatives (Admin only)
+  const repPerformance = isAdmin && users ? users
+    .filter(u => u.role === "representative")
+    .sort((a, b) => parseFloat(b.totalSales) - parseFloat(a.totalSales))
+    .slice(0, 5)
+    .map(rep => ({
+      name: rep.fullName,
+      sales: parseFloat(rep.totalSales),
+      commissions: parseFloat(rep.totalCommissions),
+      level: rep.performanceLevel,
+    })) : [];
+
+  // Category Distribution
+  const categoryData = products?.reduce((acc, product) => {
+    const existing = acc.find(c => c.category === product.category);
+    if (existing) {
+      existing.count += 1;
+    } else {
+      acc.push({ category: product.category, count: 1 });
+    }
+    return acc;
+  }, [] as Array<{ category: string; count: number }>) || [];
+
+  const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+
+  const KPICard = ({ title, value, icon: Icon, trend, trendValue, description }: any) => (
+    <Card className="hover-elevate">
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
+        <Icon className="h-4 w-4 text-muted-foreground" />
+      </CardHeader>
+      <CardContent>
+        <div className="text-2xl font-bold">{value}</div>
+        {trend && (
+          <div className="flex items-center gap-1 text-xs mt-1">
+            {trend === "up" ? (
+              <TrendingUp className="h-3 w-3 text-green-600" />
+            ) : (
+              <TrendingDown className="h-3 w-3 text-red-600" />
+            )}
+            <span className={trend === "up" ? "text-green-600" : "text-red-600"}>
+              {trendValue}
+            </span>
+            <span className="text-muted-foreground">{description}</span>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 p-6">
+      {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Representative Dashboard</h1>
+        <h1 className="text-3xl font-bold tracking-tight">
+          {isAdmin ? "Admin Dashboard" : "Representative Dashboard"}
+        </h1>
         <p className="text-muted-foreground mt-1">
-          Track your performance and manage your customers
+          Welcome back, {user?.fullName}! Here's your performance overview.
         </p>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-        <StatsCard
-          title="My Sales"
-          value={`$${stats?.totalSales.toLocaleString() || 0}`}
-          icon={TrendingUp}
-          trend={{ value: 12.5, isPositive: true }}
-        />
-        <StatsCard
-          title="My Commissions"
-          value={`$${stats?.totalCommissions.toLocaleString() || 0}`}
+      {/* KPI Cards */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <KPICard
+          title="Total Revenue"
+          value={`$${totalRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
           icon={DollarSign}
-          trend={{ value: 8.2, isPositive: true }}
+          trend="up"
+          trendValue="+12.5%"
+          description="vs last month"
         />
-        <StatsCard
-          title="My Customers"
-          value={stats?.activeCustomers || 0}
-          icon={UserCircle}
-          description="Active customers"
+        <KPICard
+          title="Total Sales"
+          value={sales?.length || 0}
+          icon={ShoppingCart}
+          trend="up"
+          trendValue="+8.2%"
+          description="vs last month"
         />
-        <StatsCard
-          title="Recent Sales"
-          value={stats?.recentSales || 0}
-          icon={Package}
-          description="Last 30 days"
+        {isAdmin ? (
+          <KPICard
+            title="Active Representatives"
+            value={activeReps}
+            icon={Users}
+            trend="up"
+            trendValue="+3"
+            description="new this month"
+          />
+        ) : (
+          <KPICard
+            title="My Customers"
+            value={activeCustomers}
+            icon={Users}
+            trend="up"
+            trendValue="+5"
+            description="new this month"
+          />
+        )}
+        <KPICard
+          title="Avg Order Value"
+          value={`$${averageOrderValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          icon={Target}
+          trend="up"
+          trendValue="+5.1%"
+          description="vs last month"
         />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
+      {/* Charts Row */}
+      <div className="grid gap-4 md:grid-cols-2">
+        {/* Sales Trend */}
+        <Card className="col-span-1">
           <CardHeader>
-            <CardTitle>Sales & Commissions</CardTitle>
+            <CardTitle>Sales Trend</CardTitle>
+            <CardDescription>Revenue and orders over the last 7 days</CardDescription>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={monthlyData}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                <XAxis dataKey="month" className="text-xs" />
+              <LineChart data={salesTrend}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                <XAxis dataKey="date" className="text-xs" />
                 <YAxis className="text-xs" />
                 <Tooltip
-                  contentStyle={{
-                    backgroundColor: "hsl(var(--card))",
-                    border: "1px solid hsl(var(--border))",
-                    borderRadius: "6px",
-                  }}
+                  contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }}
                 />
                 <Legend />
                 <Line
                   type="monotone"
                   dataKey="sales"
-                  stroke="hsl(var(--chart-1))"
+                  stroke="#3b82f6"
                   strokeWidth={2}
-                  name="Sales ($)"
+                  name="Revenue ($)"
+                  dot={{ fill: '#3b82f6' }}
                 />
                 <Line
                   type="monotone"
                   dataKey="commissions"
-                  stroke="hsl(var(--chart-2))"
+                  stroke="#10b981"
                   strokeWidth={2}
                   name="Commissions ($)"
+                  dot={{ fill: '#10b981' }}
                 />
               </LineChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
 
-        <Card>
+        {/* Product Category Distribution */}
+        <Card className="col-span-1">
           <CardHeader>
-            <CardTitle>Top Customers</CardTitle>
+            <CardTitle>Product Categories</CardTitle>
+            <CardDescription>Distribution of products by category</CardDescription>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={topCustomers}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                <XAxis type="number" className="text-xs" />
-                <YAxis type="category" dataKey="name" className="text-xs" width={100} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "hsl(var(--card))",
-                    border: "1px solid hsl(var(--border))",
-                    borderRadius: "6px",
-                  }}
-                />
-                <Bar dataKey="sales" fill="hsl(var(--chart-1))" name="Sales ($)" />
-              </BarChart>
+              <PieChart>
+                <Pie
+                  data={categoryData}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  label={({ category, percent }) => `${category} ${(percent * 100).toFixed(0)}%`}
+                  outerRadius={80}
+                  fill="#8884d8"
+                  dataKey="count"
+                >
+                  {categoryData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip />
+              </PieChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
       </div>
 
-      {!aiLoading && aiRecommendations && aiRecommendations.length > 0 && (
-        <div>
-          <h2 className="text-xl font-semibold mb-4">AI-Powered Insights for You</h2>
-          <div className="grid gap-4 md:grid-cols-2">
-            {aiRecommendations.slice(0, 4).map((rec, idx) => (
-              <AIInsightCard key={idx} recommendation={rec} />
-            ))}
-          </div>
-        </div>
-      )}
+      {/* Top Products & Performance */}
+      <div className="grid gap-4 md:grid-cols-2">
+        {/* Top Performing Products */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Star className="h-5 w-5 text-yellow-500" />
+              Top Performing Products
+            </CardTitle>
+            <CardDescription>Best sellers by revenue</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {topProducts.map((product, index) => (
+                <div
+                  key={index}
+                  className="flex items-center justify-between p-3 rounded-lg border hover-elevate"
+                  data-testid={`top-product-${index}`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary font-bold">
+                      {index + 1}
+                    </div>
+                    <div>
+                      <p className="font-medium">{product.name}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {product.quantity} units · {product.orders} orders
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-bold text-green-600">
+                      ${product.revenue.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Top Representatives or Recent Activity */}
+        {isAdmin ? (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Award className="h-5 w-5 text-yellow-500" />
+                Top Representatives
+              </CardTitle>
+              <CardDescription>Best performers by sales volume</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {repPerformance.map((rep, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center justify-between p-3 rounded-lg border hover-elevate"
+                    data-testid={`top-rep-${index}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary font-bold">
+                        {index + 1}
+                      </div>
+                      <div>
+                        <p className="font-medium">{rep.name}</p>
+                        <Badge variant="outline" className="text-xs">
+                          {rep.level}
+                        </Badge>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-bold">
+                        ${rep.sales.toLocaleString('en-US', { minimumFractionDigits: 0 })}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        ${rep.commissions.toLocaleString('en-US', { minimumFractionDigits: 2 })} commission
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Activity className="h-5 w-5 text-blue-500" />
+                Performance Metrics
+              </CardTitle>
+              <CardDescription>Your current standing</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Total Sales</span>
+                    <span className="font-bold">${user?.totalSales || "0.00"}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Total Commissions</span>
+                    <span className="font-bold text-green-600">${user?.totalCommissions || "0.00"}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Performance Level</span>
+                    <Badge>{user?.performanceLevel || "Bronze"}</Badge>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Team Size</span>
+                    <span className="font-bold">{user?.teamSize || 0}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Commission Rate</span>
+                    <span className="font-bold">{user?.commissionRate || "10.00"}%</span>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
+      {/* Quick Stats */}
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Commissions</CardTitle>
+            <DollarSign className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-green-600">
+              ${totalCommissions.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">Earned from all sales</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Active Products</CardTitle>
+            <Package className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{activeProducts}</div>
+            <p className="text-xs text-muted-foreground mt-1">Available in catalog</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Active Customers</CardTitle>
+            <Users className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{activeCustomers}</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {isAdmin ? "Total in system" : "Your customer base"}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
