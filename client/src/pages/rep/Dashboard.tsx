@@ -1,21 +1,29 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   LineChart,
   Line,
+  AreaChart,
+  Area,
   BarChart,
   Bar,
   PieChart,
   Pie,
   Cell,
+  ComposedChart,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   Legend,
   ResponsiveContainer,
+  RadialBarChart,
+  RadialBar,
 } from "recharts";
 import {
   TrendingUp,
@@ -28,12 +36,23 @@ import {
   Target,
   Activity,
   Star,
+  Calendar,
+  ArrowUpRight,
+  ArrowDownRight,
+  Clock,
+  Zap,
+  BarChart3,
+  PieChart as PieChartIcon,
+  ShoppingBag,
+  CreditCard,
+  Percent,
+  Eye,
 } from "lucide-react";
 import type { User, Product, Customer, Sale } from "@shared/schema";
 
 export default function Dashboard() {
   const { user } = useAuth();
-  // This is the representative dashboard - never show admin content
+  // Representative dashboard - never show admin content
   const isAdmin = false;
 
   const { data: users } = useQuery<User[]>({
@@ -53,15 +72,70 @@ export default function Dashboard() {
     queryKey: isAdmin ? ["/api/sales"] : ["/api/rep/sales"],
   });
 
-  // Calculate KPIs
+  // Advanced KPI Calculations
   const totalRevenue = sales?.reduce((sum, sale) => sum + parseFloat(sale.totalAmount), 0) || 0;
   const totalCommissions = sales?.reduce((sum, sale) => sum + parseFloat(sale.commissionAmount), 0) || 0;
   const averageOrderValue = sales && sales.length > 0 ? totalRevenue / sales.length : 0;
   const activeReps = users?.filter(u => u.role === "representative" && u.isActive).length || 0;
   const activeCustomers = customers?.filter(c => c.isActive).length || 0;
+  const totalCustomers = customers?.length || 0;
   const activeProducts = products?.filter(p => p.isActive).length || 0;
+  const totalProducts = products?.length || 0;
+  
+  // Calculate conversion and growth metrics
+  const conversionRate = totalCustomers > 0 ? ((sales?.length || 0) / totalCustomers * 100) : 0;
+  const profitMargin = totalRevenue > 0 ? (totalCommissions / totalRevenue * 100) : 0;
+  
+  // Last 30 days sales for trend calculation
+  const last30Days = sales?.filter(sale => {
+    const saleDate = new Date(sale.createdAt);
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    return saleDate >= thirtyDaysAgo;
+  }) || [];
+  
+  const last30DaysRevenue = last30Days.reduce((sum, sale) => sum + parseFloat(sale.totalAmount), 0);
+  const previous30DaysRevenue = totalRevenue - last30DaysRevenue;
+  const revenueGrowth = previous30DaysRevenue > 0 
+    ? ((last30DaysRevenue - previous30DaysRevenue) / previous30DaysRevenue * 100) 
+    : 0;
 
-  // Top Products Analysis
+  // Sales Trend Data (last 14 days with more detail)
+  const salesTrend = Array.from({ length: 14 }, (_, i) => {
+    const date = new Date();
+    date.setDate(date.getDate() - (13 - i));
+    const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    
+    const daySales = sales?.filter(sale => {
+      const saleDate = new Date(sale.createdAt);
+      return saleDate.toDateString() === date.toDateString();
+    }) || [];
+
+    return {
+      date: dateStr,
+      revenue: daySales.reduce((sum, sale) => sum + parseFloat(sale.totalAmount), 0),
+      orders: daySales.length,
+      commissions: daySales.reduce((sum, sale) => sum + parseFloat(sale.commissionAmount), 0),
+      customers: new Set(daySales.map(s => s.customerId)).size,
+    };
+  });
+
+  // Hourly distribution for today
+  const hourlyData = Array.from({ length: 24 }, (_, hour) => {
+    const todaySales = sales?.filter(sale => {
+      const saleDate = new Date(sale.createdAt);
+      const today = new Date();
+      return saleDate.toDateString() === today.toDateString() && saleDate.getHours() === hour;
+    }) || [];
+
+    return {
+      hour: `${hour}:00`,
+      sales: todaySales.length,
+      revenue: todaySales.reduce((sum, sale) => sum + parseFloat(sale.totalAmount), 0),
+    };
+  });
+
+  // Top Products Analysis with more metrics
   const productSales = sales?.reduce((acc, sale) => {
     const existing = acc.find(p => p.productId === sale.productId);
     if (existing) {
@@ -81,247 +155,534 @@ export default function Dashboard() {
 
   const topProducts = productSales
     ?.sort((a, b) => b.revenue - a.revenue)
-    .slice(0, 5)
+    .slice(0, 8)
     .map(ps => {
       const product = products?.find(p => p.id === ps.productId);
       return {
         name: product?.name || "Unknown",
+        category: product?.category || "Other",
         revenue: ps.revenue,
         quantity: ps.quantity,
         orders: ps.orders,
+        avgPrice: ps.revenue / ps.quantity,
       };
     }) || [];
 
-  // Sales Trend Data (last 7 days)
-  const salesTrend = Array.from({ length: 7 }, (_, i) => {
-    const date = new Date();
-    date.setDate(date.getDate() - (6 - i));
-    const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    
-    const daySales = sales?.filter(sale => {
-      const saleDate = new Date(sale.createdAt);
-      return saleDate.toDateString() === date.toDateString();
-    }) || [];
-
-    return {
-      date: dateStr,
-      sales: daySales.reduce((sum, sale) => sum + parseFloat(sale.totalAmount), 0),
-      orders: daySales.length,
-      commissions: daySales.reduce((sum, sale) => sum + parseFloat(sale.commissionAmount), 0),
-    };
-  });
-
-  // Top Representatives (Admin only)
+  // Top Representatives with detailed metrics
   const repPerformance = isAdmin && users ? users
     .filter(u => u.role === "representative")
-    .sort((a, b) => parseFloat(b.totalSales) - parseFloat(a.totalSales))
-    .slice(0, 5)
-    .map(rep => ({
-      name: rep.fullName,
-      sales: parseFloat(rep.totalSales),
-      commissions: parseFloat(rep.totalCommissions),
-      level: rep.performanceLevel,
-    })) : [];
+    .map(rep => {
+      const repSales = sales?.filter(s => s.userId === rep.id) || [];
+      const repRevenue = repSales.reduce((sum, sale) => sum + parseFloat(sale.totalAmount), 0);
+      const repCommissions = repSales.reduce((sum, sale) => sum + parseFloat(sale.commissionAmount), 0);
+      return {
+        id: rep.id,
+        name: rep.fullName,
+        email: rep.email,
+        sales: repRevenue,
+        commissions: repCommissions,
+        orders: repSales.length,
+        level: rep.performanceLevel,
+        teamSize: rep.teamSize,
+      };
+    })
+    .sort((a, b) => b.sales - a.sales)
+    .slice(0, 6) : [];
 
-  // Category Distribution
-  const categoryData = products?.reduce((acc, product) => {
+  // Category Performance
+  const categoryPerformance = products?.reduce((acc, product) => {
+    const productRevenue = sales
+      ?.filter(s => s.productId === product.id)
+      .reduce((sum, sale) => sum + parseFloat(sale.totalAmount), 0) || 0;
+    
     const existing = acc.find(c => c.category === product.category);
     if (existing) {
-      existing.count += 1;
+      existing.revenue += productRevenue;
+      existing.products += 1;
     } else {
-      acc.push({ category: product.category, count: 1 });
+      acc.push({
+        category: product.category,
+        revenue: productRevenue,
+        products: 1,
+      });
     }
     return acc;
-  }, [] as Array<{ category: string; count: number }>) || [];
+  }, [] as Array<{ category: string; revenue: number; products: number }>)
+    .sort((a, b) => b.revenue - a.revenue) || [];
 
-  const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+  // Recent Activity
+  const recentActivity = sales
+    ?.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 6)
+    .map(sale => {
+      const customer = customers?.find(c => c.id === sale.customerId);
+      const product = products?.find(p => p.id === sale.productId);
+      return {
+        id: sale.id,
+        customer: customer?.name || "Unknown",
+        product: product?.name || "Unknown",
+        amount: parseFloat(sale.totalAmount),
+        quantity: sale.quantity,
+        time: new Date(sale.createdAt),
+        status: sale.paymentStatus,
+      };
+    }) || [];
 
-  const KPICard = ({ title, value, icon: Icon, trend, trendValue, description }: any) => (
-    <Card className="hover-elevate">
+  // Customer Tiers Distribution
+  const tierDistribution = customers?.reduce((acc, customer) => {
+    const existing = acc.find(t => t.tier === customer.customerTier);
+    if (existing) {
+      existing.count += 1;
+      existing.revenue += parseFloat(customer.totalPurchases);
+    } else {
+      acc.push({
+        tier: customer.customerTier,
+        count: 1,
+        revenue: parseFloat(customer.totalPurchases),
+      });
+    }
+    return acc;
+  }, [] as Array<{ tier: string; count: number; revenue: number }>) || [];
+
+  const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
+  const GRADIENT_COLORS = ['#60a5fa', '#3b82f6'];
+
+  const DetailedKPICard = ({ 
+    title, 
+    value, 
+    icon: Icon, 
+    trend, 
+    trendValue, 
+    subtitle,
+    progress,
+    sparklineData,
+    badge,
+  }: any) => (
+    <Card className="hover-elevate overflow-hidden relative">
+      <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-primary/5 to-transparent rounded-full -mr-16 -mt-16" />
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
-        <Icon className="h-4 w-4 text-muted-foreground" />
+        <div className="flex items-center gap-2">
+          {badge && <Badge variant="outline" className="text-xs">{badge}</Badge>}
+          <Icon className="h-4 w-4 text-muted-foreground" />
+        </div>
       </CardHeader>
       <CardContent>
-        <div className="text-2xl font-bold">{value}</div>
+        <div className="text-3xl font-bold">{value}</div>
+        {subtitle && <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>}
         {trend && (
-          <div className="flex items-center gap-1 text-xs mt-1">
+          <div className="flex items-center gap-1 text-xs mt-2">
             {trend === "up" ? (
-              <TrendingUp className="h-3 w-3 text-green-600" />
+              <ArrowUpRight className="h-3 w-3 text-green-600" />
             ) : (
-              <TrendingDown className="h-3 w-3 text-red-600" />
+              <ArrowDownRight className="h-3 w-3 text-red-600" />
             )}
-            <span className={trend === "up" ? "text-green-600" : "text-red-600"}>
+            <span className={trend === "up" ? "text-green-600 font-semibold" : "text-red-600 font-semibold"}>
               {trendValue}
             </span>
-            <span className="text-muted-foreground">{description}</span>
+            <span className="text-muted-foreground">vs last period</span>
+          </div>
+        )}
+        {progress !== undefined && (
+          <div className="mt-3">
+            <Progress value={progress} className="h-1.5" />
+          </div>
+        )}
+        {sparklineData && sparklineData.length > 0 && (
+          <div className="mt-2 h-8">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={sparklineData}>
+                <defs>
+                  <linearGradient id="sparkGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <Area type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={1.5} fill="url(#sparkGradient)" />
+              </AreaChart>
+            </ResponsiveContainer>
           </div>
         )}
       </CardContent>
     </Card>
   );
 
+  // Prepare sparkline data for KPIs
+  const revenueSparkline = salesTrend.slice(-7).map(d => ({ value: d.revenue }));
+  const ordersSparkline = salesTrend.slice(-7).map(d => ({ value: d.orders }));
+
   return (
-    <div className="space-y-6 p-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">
-          {isAdmin ? "Admin Dashboard" : "Representative Dashboard"}
-        </h1>
-        <p className="text-muted-foreground mt-1">
-          Welcome back, {user?.fullName}! Here's your performance overview.
-        </p>
+    <div className="space-y-6">
+      {/* Header with Quick Stats */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
+            {isAdmin ? "Analytics Dashboard" : "Performance Dashboard"}
+          </h1>
+          <p className="text-muted-foreground mt-2 flex items-center gap-2">
+            <Clock className="h-4 w-4" />
+            Welcome back, {user?.fullName}! Last updated: {new Date().toLocaleTimeString()}
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <Badge variant="outline" className="px-3 py-1.5">
+            <Activity className="h-3 w-3 mr-1.5" />
+            Live Data
+          </Badge>
+          <Button variant="outline" size="sm" data-testid="button-export">
+            <BarChart3 className="h-4 w-4 mr-2" />
+            Export Report
+          </Button>
+        </div>
       </div>
 
-      {/* KPI Cards */}
+      {/* Enhanced KPI Cards Grid */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <KPICard
+        <DetailedKPICard
           title="Total Revenue"
-          value={`$${totalRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          value={`$${totalRevenue.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
           icon={DollarSign}
-          trend="up"
-          trendValue="+12.5%"
-          description="vs last month"
+          trend={revenueGrowth >= 0 ? "up" : "down"}
+          trendValue={`${Math.abs(revenueGrowth).toFixed(1)}%`}
+          subtitle="Last 30 days performance"
+          sparklineData={revenueSparkline}
+          badge="Primary"
         />
-        <KPICard
-          title="Total Sales"
+        <DetailedKPICard
+          title="Total Orders"
           value={sales?.length || 0}
           icon={ShoppingCart}
           trend="up"
           trendValue="+8.2%"
-          description="vs last month"
+          subtitle={`${last30Days.length} orders this month`}
+          sparklineData={ordersSparkline}
         />
         {isAdmin ? (
-          <KPICard
-            title="Active Representatives"
+          <DetailedKPICard
+            title="Active Network"
             value={activeReps}
             icon={Users}
             trend="up"
             trendValue="+3"
-            description="new this month"
+            subtitle={`${totalCustomers} total customers`}
+            progress={(activeReps / (users?.length || 1)) * 100}
           />
         ) : (
-          <KPICard
+          <DetailedKPICard
             title="My Customers"
             value={activeCustomers}
             icon={Users}
             trend="up"
             trendValue="+5"
-            description="new this month"
+            subtitle={`${totalCustomers} total assigned`}
+            progress={(activeCustomers / totalCustomers) * 100}
           />
         )}
-        <KPICard
+        <DetailedKPICard
           title="Avg Order Value"
-          value={`$${averageOrderValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          value={`$${averageOrderValue.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
           icon={Target}
           trend="up"
           trendValue="+5.1%"
-          description="vs last month"
+          subtitle="Per transaction metric"
         />
       </div>
 
-      {/* Charts Row */}
-      <div className="grid gap-4 md:grid-cols-2">
-        {/* Sales Trend */}
+      {/* Secondary KPI Row */}
+      <div className="grid gap-4 md:grid-cols-4">
+        <Card className="hover-elevate">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+              <Percent className="h-4 w-4" />
+              Conversion Rate
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{conversionRate.toFixed(1)}%</div>
+            <Progress value={conversionRate} className="mt-2 h-1.5" />
+          </CardContent>
+        </Card>
+        <Card className="hover-elevate">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+              <CreditCard className="h-4 w-4" />
+              Commissions
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-green-600">
+              ${totalCommissions.toLocaleString('en-US', { minimumFractionDigits: 0 })}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">{profitMargin.toFixed(1)}% profit margin</p>
+          </CardContent>
+        </Card>
+        <Card className="hover-elevate">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+              <Package className="h-4 w-4" />
+              Active Products
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{activeProducts}</div>
+            <p className="text-xs text-muted-foreground mt-1">of {totalProducts} total</p>
+          </CardContent>
+        </Card>
+        <Card className="hover-elevate">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+              <ShoppingBag className="h-4 w-4" />
+              Items Sold
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {sales?.reduce((sum, s) => sum + s.quantity, 0) || 0}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">Total units moved</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Advanced Charts Section */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Revenue & Orders Trend - Area Chart */}
         <Card className="col-span-1">
           <CardHeader>
-            <CardTitle>Sales Trend</CardTitle>
-            <CardDescription>Revenue and orders over the last 7 days</CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <TrendingUp className="h-5 w-5 text-blue-500" />
+                  Revenue & Order Trends
+                </CardTitle>
+                <CardDescription>14-day performance overview</CardDescription>
+              </div>
+              <Badge variant="outline">Last 2 weeks</Badge>
+            </div>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={salesTrend}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                <XAxis dataKey="date" className="text-xs" />
-                <YAxis className="text-xs" />
+              <ComposedChart data={salesTrend}>
+                <defs>
+                  <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                  </linearGradient>
+                  <linearGradient id="colorCommission" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis dataKey="date" tick={{ fontSize: 12 }} />
+                <YAxis yAxisId="left" tick={{ fontSize: 12 }} />
+                <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 12 }} />
                 <Tooltip
-                  contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }}
+                  contentStyle={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '8px' }}
+                  formatter={(value: any) => `$${parseFloat(value).toFixed(2)}`}
                 />
                 <Legend />
-                <Line
+                <Area
+                  yAxisId="left"
                   type="monotone"
-                  dataKey="sales"
+                  dataKey="revenue"
                   stroke="#3b82f6"
                   strokeWidth={2}
-                  name="Revenue ($)"
-                  dot={{ fill: '#3b82f6' }}
+                  fillOpacity={1}
+                  fill="url(#colorRevenue)"
+                  name="Revenue"
                 />
-                <Line
+                <Area
+                  yAxisId="left"
                   type="monotone"
                   dataKey="commissions"
                   stroke="#10b981"
                   strokeWidth={2}
-                  name="Commissions ($)"
-                  dot={{ fill: '#10b981' }}
+                  fillOpacity={1}
+                  fill="url(#colorCommission)"
+                  name="Commissions"
                 />
-              </LineChart>
+                <Line
+                  yAxisId="right"
+                  type="monotone"
+                  dataKey="orders"
+                  stroke="#f59e0b"
+                  strokeWidth={2}
+                  dot={{ fill: '#f59e0b', r: 3 }}
+                  name="Orders"
+                />
+              </ComposedChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
 
-        {/* Product Category Distribution */}
+        {/* Category Distribution - Enhanced Pie */}
         <Card className="col-span-1">
           <CardHeader>
-            <CardTitle>Product Categories</CardTitle>
-            <CardDescription>Distribution of products by category</CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <PieChartIcon className="h-5 w-5 text-purple-500" />
+                  Revenue by Category
+                </CardTitle>
+                <CardDescription>Performance breakdown</CardDescription>
+              </div>
+              <Badge variant="outline">{categoryPerformance.length} categories</Badge>
+            </div>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
                 <Pie
-                  data={categoryData}
+                  data={categoryPerformance}
                   cx="50%"
                   cy="50%"
                   labelLine={false}
-                  label={({ category, percent }) => `${category} ${(percent * 100).toFixed(0)}%`}
-                  outerRadius={80}
+                  label={({ category, revenue }) => 
+                    `${category}: $${(revenue/1000).toFixed(1)}k`
+                  }
+                  outerRadius={100}
                   fill="#8884d8"
-                  dataKey="count"
+                  dataKey="revenue"
                 >
-                  {categoryData.map((entry, index) => (
+                  {categoryPerformance.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip />
+                <Tooltip
+                  formatter={(value: any) => `$${parseFloat(value).toLocaleString('en-US', { minimumFractionDigits: 2 })}`}
+                />
               </PieChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
       </div>
 
-      {/* Top Products & Performance */}
-      <div className="grid gap-4 md:grid-cols-2">
-        {/* Top Performing Products */}
+      {/* Hourly Activity & Top Products */}
+      <div className="grid gap-6 lg:grid-cols-3">
+        {/* Hourly Activity Pattern */}
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Zap className="h-5 w-5 text-yellow-500" />
+                  Today's Activity Pattern
+                </CardTitle>
+                <CardDescription>Sales distribution by hour</CardDescription>
+              </div>
+              <Badge variant="outline">
+                <Calendar className="h-3 w-3 mr-1" />
+                {new Date().toLocaleDateString()}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={250}>
+              <BarChart data={hourlyData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis 
+                  dataKey="hour" 
+                  tick={{ fontSize: 11 }}
+                  interval={2}
+                />
+                <YAxis tick={{ fontSize: 12 }} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '8px' }}
+                />
+                <Bar dataKey="sales" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Orders" />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        {/* Customer Tiers */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Star className="h-5 w-5 text-yellow-500" />
-              Top Performing Products
+              <Award className="h-5 w-5 text-yellow-500" />
+              Customer Tiers
             </CardTitle>
-            <CardDescription>Best sellers by revenue</CardDescription>
+            <CardDescription>Distribution by tier</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {topProducts.map((product, index) => (
+            <div className="space-y-3">
+              {tierDistribution.map((tier, index) => (
+                <div key={tier.tier} className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div
+                        className="w-3 h-3 rounded-full"
+                        style={{ backgroundColor: COLORS[index % COLORS.length] }}
+                      />
+                      <span className="text-sm font-medium">{tier.tier}</span>
+                    </div>
+                    <span className="text-sm font-bold">{tier.count}</span>
+                  </div>
+                  <Progress
+                    value={(tier.count / totalCustomers) * 100}
+                    className="h-2"
+                    style={{
+                      ['--progress-background' as any]: COLORS[index % COLORS.length],
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    ${tier.revenue.toLocaleString('en-US', { minimumFractionDigits: 0 })} revenue
+                  </p>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Top Products & Representatives/Activity */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Top Performing Products */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Star className="h-5 w-5 text-yellow-500" />
+                  Top Products
+                </CardTitle>
+                <CardDescription>Best performers by revenue</CardDescription>
+              </div>
+              <Button variant="ghost" size="sm">
+                <Eye className="h-4 w-4 mr-1" />
+                View All
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {topProducts.slice(0, 6).map((product, index) => (
                 <div
                   key={index}
                   className="flex items-center justify-between p-3 rounded-lg border hover-elevate"
                   data-testid={`top-product-${index}`}
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary font-bold">
-                      {index + 1}
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <div className="flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-primary to-primary/60 text-white font-bold text-sm shrink-0">
+                      #{index + 1}
                     </div>
-                    <div>
-                      <p className="font-medium">{product.name}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {product.quantity} units · {product.orders} orders
-                      </p>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium truncate">{product.name}</p>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+                        <Badge variant="outline" className="text-xs px-1.5 py-0">{product.category}</Badge>
+                        <span>{product.quantity} units</span>
+                        <span>•</span>
+                        <span>{product.orders} orders</span>
+                      </div>
                     </div>
                   </div>
-                  <div className="text-right">
+                  <div className="text-right shrink-0 ml-3">
                     <p className="font-bold text-green-600">
-                      ${product.revenue.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      ${product.revenue.toLocaleString('en-US', { minimumFractionDigits: 0 })}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      ${product.avgPrice.toFixed(2)} avg
                     </p>
                   </div>
                 </div>
@@ -330,123 +691,50 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        {/* Top Representatives or Recent Activity */}
-        {isAdmin ? (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Award className="h-5 w-5 text-yellow-500" />
-                Top Representatives
-              </CardTitle>
-              <CardDescription>Best performers by sales volume</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {repPerformance.map((rep, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center justify-between p-3 rounded-lg border hover-elevate"
-                    data-testid={`top-rep-${index}`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary font-bold">
-                        {index + 1}
-                      </div>
-                      <div>
-                        <p className="font-medium">{rep.name}</p>
-                        <Badge variant="outline" className="text-xs">
-                          {rep.level}
-                        </Badge>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-bold">
-                        ${rep.sales.toLocaleString('en-US', { minimumFractionDigits: 0 })}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        ${rep.commissions.toLocaleString('en-US', { minimumFractionDigits: 2 })} commission
-                      </p>
-                    </div>
-                  </div>
-                ))}
+        {/* Recent Activity for Rep (Admin would see Top Reps but isAdmin=false) */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Activity className="h-5 w-5 text-blue-500" />
+                  Recent Activity
+                </CardTitle>
+                <CardDescription>Latest transactions</CardDescription>
               </div>
-            </CardContent>
-          </Card>
-        ) : (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Activity className="h-5 w-5 text-blue-500" />
-                Performance Metrics
-              </CardTitle>
-              <CardDescription>Your current standing</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Total Sales</span>
-                    <span className="font-bold">${user?.totalSales || "0.00"}</span>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {recentActivity.map((activity) => (
+                <div
+                  key={activity.id}
+                  className="flex items-start gap-3 p-3 rounded-lg border hover-elevate"
+                  data-testid={`activity-${activity.id}`}
+                >
+                  <div className="flex-shrink-0">
+                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                      <ShoppingCart className="h-5 w-5 text-primary" />
+                    </div>
                   </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Total Commissions</span>
-                    <span className="font-bold text-green-600">${user?.totalCommissions || "0.00"}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{activity.customer}</p>
+                    <p className="text-xs text-muted-foreground truncate">{activity.product}</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {activity.time.toLocaleTimeString()} • {activity.quantity} units
+                    </p>
                   </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Performance Level</span>
-                    <Badge>{user?.performanceLevel || "Bronze"}</Badge>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Team Size</span>
-                    <span className="font-bold">{user?.teamSize || 0}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Commission Rate</span>
-                    <span className="font-bold">{user?.commissionRate || "10.00"}%</span>
+                  <div className="text-right shrink-0">
+                    <p className="text-sm font-bold text-green-600">
+                      ${activity.amount.toFixed(2)}
+                    </p>
+                    <Badge variant="outline" className="text-xs mt-1">
+                      {activity.status}
+                    </Badge>
                   </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-      </div>
-
-      {/* Quick Stats */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Commissions</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">
-              ${totalCommissions.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              ))}
             </div>
-            <p className="text-xs text-muted-foreground mt-1">Earned from all sales</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Products</CardTitle>
-            <Package className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{activeProducts}</div>
-            <p className="text-xs text-muted-foreground mt-1">Available in catalog</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Customers</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{activeCustomers}</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {isAdmin ? "Total in system" : "Your customer base"}
-            </p>
           </CardContent>
         </Card>
       </div>
