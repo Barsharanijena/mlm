@@ -14,7 +14,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import type { User } from "@shared/schema";
-import { Network } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -69,9 +68,6 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5 p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-primary text-primary-foreground mb-4">
-            <Network className="h-8 w-8" />
-          </div>
           <h1 className="text-3xl font-bold tracking-tight">MLM Platform</h1>
           <p className="text-muted-foreground mt-2">
             Professional multi-level marketing management
@@ -135,14 +131,6 @@ export default function Login() {
                 >
                   {form.formState.isSubmitting ? "Signing in..." : "Sign In"}
                 </Button>
-
-                <div className="mt-2 p-4 bg-muted rounded-md">
-                  <p className="text-xs font-medium mb-2">Demo Credentials:</p>
-                  <div className="space-y-1 text-xs text-muted-foreground font-mono">
-                    <div>Admin: admin / admin123</div>
-                    <div>Rep: rep1 / rep123</div>
-                  </div>
-                </div>
               </form>
             </Form>
           </CardContent>
